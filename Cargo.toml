@@ -10,7 +10,7 @@ clap = "2"
 colored = "2"
 futures-util = "0.3"
 http = "0.2"
-hyper = { version = "0.14", features = ["runtime", "client", "http1", "http2"] }
+hyper = { version = "0.14", features = ["client", "http1", "http2", "backports", "deprecated"] }
 native-tls = { version = "0.2", features = ["alpn"] }
 pin-project-lite = "0.2"
 regex = "1"

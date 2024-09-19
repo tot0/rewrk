@@ -414,6 +414,7 @@ impl WorkerConnection {
         let read_transfer_start = self.conn.usage().get_received_count();
         let write_transfer_start = self.conn.usage().get_written_count();
         let start = Instant::now();
+        // TODO: Create tracing Span
 
         let (head, body) = match self.conn.execute_req(request).await {
             Ok(resp) => resp,

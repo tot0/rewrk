@@ -58,6 +58,10 @@ impl SampleFactory {
             latency_hist: Histogram::new(2).unwrap(),
             write_transfer_hist: Histogram::new(2).unwrap(),
             read_transfer_hist: Histogram::new(2).unwrap(),
+            ttft_hist: Histogram::new(2).unwrap(),
+            tpot_hist: Histogram::new(2).unwrap(),
+            // TODO: Ideally should be able to start arbitrary histograms in Sample on top of common ones.
+            expected_latency_hist: Histogram::new(2).unwrap(),
             errors: Vec::with_capacity(4),
             metadata: self.metadata,
         }
@@ -94,6 +98,11 @@ pub struct Sample {
     write_transfer_hist: Histogram<u32>,
     read_transfer_hist: Histogram<u32>,
 
+    // TODO: Put these in a map for arbitrary histograms.
+    ttft_hist: Histogram<u32>,
+    tpot_hist: Histogram<u32>,
+    expected_latency_hist: Histogram<u32>,
+
     errors: Vec<ValidationError>,
     metadata: SampleMetadata,
 }
@@ -116,6 +125,21 @@ impl Sample {
     /// The sample latency histogram
     pub fn latency(&self) -> &Histogram<u32> {
         &self.latency_hist
+    }
+
+    /// The ttft
+    pub fn ttft(&self) -> &Histogram<u32> {
+        &self.ttft_hist
+    }
+
+    /// The tpot
+    pub fn tpot(&self) -> &Histogram<u32> {
+        &self.tpot_hist
+    }
+
+    /// The expected latency histogram
+    pub fn expected_latency(&self) -> &Histogram<u32> {
+        &self.expected_latency_hist
     }
 
     /// The sample write transfer rate histogram
@@ -144,9 +168,38 @@ impl Sample {
     /// Record a latency duration.
     ///
     /// This value is converted to micro seconds.
-    pub(crate) fn record_latency(&mut self, dur: Duration) {
+    pub fn record_latency(&mut self, dur: Duration) {
         let micros = dur.as_micros() as u64;
         self.latency_hist.record(micros).expect("Record value");
+    }
+
+    #[inline]
+    /// Record the time to first byte.
+    ///
+    /// This value is converted to micro seconds.
+    pub fn record_ttft(&mut self, dur: Duration) {
+        let micros = dur.as_micros() as u64;
+        self.ttft_hist.record(micros).expect("Record value");
+    }
+
+    #[inline]
+    /// Record the time between output tokens.
+    ///
+    /// This value is converted to micro seconds.
+    pub fn record_tpot(&mut self, dur: Duration) {
+        let micros = dur.as_micros() as u64;
+        self.tpot_hist.record(micros).expect("Record value");
+    }
+
+    #[inline]
+    /// Record the expected latency.
+    ///
+    /// This value is converted to micro seconds.
+    pub fn record_expected_latency(&mut self, dur: Duration) {
+        let micros = dur.as_micros() as u64;
+        self.expected_latency_hist
+            .record(micros)
+            .expect("Record value");
     }
 
     #[inline]

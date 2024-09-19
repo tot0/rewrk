@@ -132,6 +132,7 @@ pub use self::recording::{Sample, SampleCollector};
 pub use self::runtime::{
     Error,
     ReWrkBenchmark,
+    StreamingResponseHandler,
     DEFAULT_WAIT_WARNING_THRESHOLD,
     DEFAULT_WINDOW_DURATION,
 };

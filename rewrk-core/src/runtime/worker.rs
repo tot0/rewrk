@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures_util::future::join_all;
+use http::response::Parts;
 use http::Request;
 use hyper::Body;
 use tokio::sync::oneshot;
@@ -43,6 +44,8 @@ where
     /// This is useful in situations where you know the producer will
     /// take more time than normal and want to silence the warning.
     pub producer_wait_warning_threshold: f32,
+
+    pub streaming_handler: Option<Arc<dyn StreamingResponseHandler>>,
 }
 
 /// Spawns N worker runtimes for executing search requests.
@@ -140,6 +143,7 @@ async fn run_worker<P>(
             sample_factory.clone(),
             config.validator.clone(),
             producer.clone(),
+            config.streaming_handler.clone(),
         )
         .await;
 
@@ -194,6 +198,7 @@ async fn create_worker_connection(
     sample_factory: SampleFactory,
     validator: Arc<dyn ResponseValidator>,
     producer: ProducerBatches,
+    streaming_handler: Option<Arc<dyn StreamingResponseHandler>>,
 ) -> Option<ConnectionTask> {
     let connect_result = connector.connect_timeout(CONNECT_TIMEOUT).await;
     let conn = match connect_result {
@@ -223,6 +228,10 @@ async fn create_worker_connection(
         producer,
         shutdown.clone(),
     );
+
+    if let Some(handler) = streaming_handler {
+        connection.set_streaming_handler(handler);
+    }
 
     let fut = async move {
         while !shutdown.should_abort() {
@@ -283,6 +292,19 @@ pub struct WorkerConnection {
     /// This is so that timings can be adjusted while waiting for
     /// benchmarking to start, which would otherwise skew results.
     is_first_batch: bool,
+    /// The handler for processing streaming events.
+    streaming_handler: Option<Arc<dyn StreamingResponseHandler>>,
+}
+
+#[async_trait::async_trait]
+pub trait StreamingResponseHandler: Send + Sync + 'static {
+    async fn handle(
+        &self,
+        start: Instant,
+        head: Parts,
+        body: Body,
+        sample: &mut Sample,
+    ) -> anyhow::Result<()>;
 }
 
 impl WorkerConnection {
@@ -307,6 +329,7 @@ impl WorkerConnection {
             shutdown,
             timings: RuntimeTimings::default(),
             is_first_batch: true,
+            streaming_handler: None,
         }
     }
 
@@ -381,6 +404,11 @@ impl WorkerConnection {
         }
     }
 
+    /// Set a streaming handler for processing SSE events
+    pub fn set_streaming_handler(&mut self, handler: Arc<dyn StreamingResponseHandler>) {
+        self.streaming_handler = Some(handler);
+    }
+
     /// Send a HTTP request and record the relevant metrics
     async fn send(&mut self, request: Request<Body>) -> Result<bool, hyper::Error> {
         let read_transfer_start = self.conn.usage().get_received_count();
@@ -411,24 +439,42 @@ impl WorkerConnection {
             },
         };
 
-        let elapsed_time = start.elapsed();
-        let read_transfer_end = self.conn.usage().get_received_count();
-        let write_transfer_end = self.conn.usage().get_written_count();
-
-        if let Err(e) = self.validator.validate(head, body) {
-            self.sample.record_error(e);
+        match if let Some(ref streaming_handler) = self.streaming_handler {
+            if let Err(e) = streaming_handler
+                .handle(start, head, body, &mut self.sample)
+                .await
+            {
+                Err(ValidationError::Other(Cow::Owned(format!(
+                    "Streaming handler error: {}",
+                    e
+                ))))
+            } else {
+                Ok(())
+            }
         } else {
-            self.sample.record_latency(elapsed_time);
-            self.sample.record_read_transfer(
-                read_transfer_start,
-                read_transfer_end,
-                elapsed_time,
-            );
-            self.sample.record_write_transfer(
-                write_transfer_start,
-                write_transfer_end,
-                elapsed_time,
-            );
+            self.validator
+                .validate(head, hyper::body::to_bytes(body).await?)
+        } {
+            Ok(_) => {
+                let elapsed_time = start.elapsed();
+                let read_transfer_end = self.conn.usage().get_received_count();
+                let write_transfer_end = self.conn.usage().get_written_count();
+
+                self.sample.record_latency(elapsed_time);
+                self.sample.record_read_transfer(
+                    read_transfer_start,
+                    read_transfer_end,
+                    elapsed_time,
+                );
+                self.sample.record_write_transfer(
+                    write_transfer_start,
+                    write_transfer_end,
+                    elapsed_time,
+                );
+            },
+            Err(e) => {
+                self.sample.record_error(e);
+            },
         }
 
         // Submit the sample if it's window interval has elapsed.

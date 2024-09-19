@@ -163,7 +163,7 @@ impl ReWrkConnection {
     pub(crate) async fn execute_req(
         &mut self,
         mut request: Request<Body>,
-    ) -> Result<(Parts, Bytes), hyper::Error> {
+    ) -> Result<(Parts, Body), hyper::Error> {
         let request_uri = request.uri();
         let mut builder = Uri::builder()
             .scheme(self.uri.scheme().unwrap().clone())
@@ -178,7 +178,6 @@ impl ReWrkConnection {
 
         let resp = self.stream.send(request).await?;
         let (head, body) = resp.into_parts();
-        let body = hyper::body::to_bytes(body).await?;
         Ok((head, body))
     }
 }

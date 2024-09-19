@@ -9,6 +9,7 @@ use std::{cmp, io};
 
 use http::{HeaderValue, Uri};
 use tokio_native_tls::TlsConnector;
+pub use worker::StreamingResponseHandler;
 
 pub(crate) use self::worker::{spawn_workers, ShutdownHandle, WorkerConfig};
 use crate::connection::ReWrkConnector;
@@ -99,6 +100,7 @@ where
             producer,
             sample_window: DEFAULT_WINDOW_DURATION,
             producer_wait_warning_threshold: DEFAULT_WAIT_WARNING_THRESHOLD,
+            streaming_handler: None,
         };
 
         let num_workers = cmp::max(num_cpus::get() - 1, 1);
@@ -110,6 +112,10 @@ where
             concurrency,
             worker_config,
         })
+    }
+
+    pub fn set_streaming_handler(&mut self, handler: Arc<dyn StreamingResponseHandler>) {
+        self.worker_config.streaming_handler = Some(handler);
     }
 
     /// Run a benchmark.

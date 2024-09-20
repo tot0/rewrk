@@ -70,6 +70,7 @@ where
     collector_handle: CollectorActor<C>,
     num_workers: usize,
     concurrency: usize,
+    worker_ramp_up_pause: Duration,
     worker_config: WorkerConfig<P>,
 }
 
@@ -104,18 +105,24 @@ where
         };
 
         let num_workers = cmp::max(num_cpus::get() - 1, 1);
+        let worker_ramp_up_pause = Duration::from_millis(0);
 
         Ok(Self {
             shutdown,
             collector_handle,
             num_workers,
             concurrency,
+            worker_ramp_up_pause,
             worker_config,
         })
     }
 
     pub fn set_streaming_handler(&mut self, handler: Arc<dyn StreamingResponseHandler>) {
         self.worker_config.streaming_handler = Some(handler);
+    }
+
+    pub fn set_worker_ramp_up_pause(&mut self, dur: Duration) {
+        self.worker_ramp_up_pause = dur;
     }
 
     /// Run a benchmark.
@@ -133,6 +140,7 @@ where
             self.shutdown.clone(),
             self.num_workers,
             self.concurrency,
+            self.worker_ramp_up_pause,
             self.worker_config.clone(),
         );
 

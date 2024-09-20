@@ -53,6 +53,7 @@ pub(crate) fn spawn_workers<P>(
     shutdown: ShutdownHandle,
     num_workers: usize,
     concurrency: usize,
+    worker_ramp_up_pause: Duration,
     config: WorkerConfig<P>,
 ) -> WorkerGuard
 where
@@ -80,6 +81,7 @@ where
             shutdown.clone(),
             config.clone(),
         );
+        std::thread::sleep(worker_ramp_up_pause);
     }
 
     waiter
